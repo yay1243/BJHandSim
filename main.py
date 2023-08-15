@@ -1,13 +1,18 @@
 import random
+import numpy as np
+from collections import Counter
 
 HIT = 0
 STAY = 1
 WIN = 1
 LOSE_TIE = 0
 
-def new_round(players, deck):
+
+def new_round(players, deck, rigged=False):
     for hand in players:
         hand.clear()
+    if rigged:
+        return True
     for a in range(2):
         for hand in players:
             hand.append(draw(deck))
@@ -23,7 +28,8 @@ def dealer_routine(hand, deck):
     return point_value(hand)
 
 
-def player_random_routine(hand, deck, actions):
+def player_random_routine(hand, deck):
+    actions = []
     while point_value(hand) < 18:
         if random.randint(0, 1) == 0:
             actions.append(HIT)
@@ -31,7 +37,7 @@ def player_random_routine(hand, deck, actions):
         else:
             actions.append(STAY)
             break
-    return True
+    return actions
 
 
 def draw(deck):
@@ -56,19 +62,20 @@ def rig_hand(deck, hand, value):
         hand.append(value-hand[0])
     deck.remove(hand[0])
     deck.remove(hand[1])
+    random.shuffle(deck)
     return True
 
 
 def rig_upcard(deck, hand, value):
     hand.append(value)
+    deck.remove(value)
+    random.shuffle(deck)
     hand.append(draw(deck))
-    deck.remove(hand[0])
     return True
 
 
-def shuffle_deck(deck_number):
-    deck = [1,2,3,4,5,6,7,8,9,10,10,10,10] * 4 * deck_number
-    random.shuffle(deck)
+def fill_shoe(no_of_decks):
+    deck = [1,2,3,4,5,6,7,8,9,10,10,10,10] * 4 * no_of_decks
     return deck
 
 
@@ -83,30 +90,41 @@ def point_value(hand):
         return hard
 
 
-def update_win_chart(dealer, player, actions, outcome, chart):
-    # chart[action][dealer up card][hard value]
-    if len(player) > 2:
-        player.pop()
-    for action in reversed(actions):
-        if action == HIT:
-            chart[HIT][dealer[0]][point_value(player)].append(outcome)
-        else:
-            chart[STAY][dealer[0]][point_value(player)].append(outcome)
-    return True
+def round_result(players):
+    dealer = point_value(players[0])
+    player = point_value(players[1])
+    if player > 21:
+        return LOSE_TIE
+    if dealer > 21:
+        return WIN
+    if dealer >= player:
+        return LOSE_TIE
+    else:
+        return WIN
 
 
 if __name__ == '__main__':
     dealer, player_1 = [], []
-    shuffled = shuffle_deck(1)
-    print(shuffled)
-    rig_upcard(shuffled, dealer, 3)
-    print(dealer)
-    rig_hand(shuffled, player_1, 20)
-    print(shuffled)
-    print(player_1)
-    # for a in range(2):
-    #     players = [dealer, player_1]
-    #     new_round(players, shuffled)
-    #     print(dealer, player_1)
-    #     print(shuffled)
+    wins = 0
+    action_chart = np.zeros((2,5,10), dtype=np.uint32)
+    # [WIN/LOSE][Hard Total][Dealer upcard]
+    print(action_chart)
+    action_chart[0][1][2] = 4
+    print(action_chart)
+    for a in range(100000):
+        players = [dealer, player_1]
+        deck = fill_shoe(1)
+        new_round(players, deck, True)
+        rig_hand(deck, player_1, 20)
+        rig_upcard(deck, dealer, 5)
+        player_1.append(draw(deck))
+        dealer_routine(dealer, deck)
+        if round_result([dealer, player_1]) == WIN:
+            wins += 1
+            #print(point_value(dealer), point_value(player_1))
+    a += 1
+    print(wins)
+    print("Win Percent chance = " + str(wins / a))
+
+
 
