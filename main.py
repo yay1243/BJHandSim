@@ -1,11 +1,12 @@
 import random
 import numpy as np
-from collections import Counter
+import os.path
 
 HIT = 0
-STAY = 1
+STAND = 1
 WIN = 1
-LOSE_TIE = 0
+TIE = 0
+LOSE = -1
 
 
 def new_round(players, deck, rigged=False):
@@ -23,7 +24,7 @@ def new_round(players, deck, rigged=False):
 
 
 def dealer_routine(hand, deck):
-    while point_value(hand) < 16:
+    while point_value(hand) < 17:
         hand.append(draw(deck))
     return point_value(hand)
 
@@ -35,9 +36,23 @@ def player_random_routine(hand, deck):
             actions.append(HIT)
             hand.append(draw(deck))
         else:
-            actions.append(STAY)
+            actions.append(STAND)
             break
     return actions
+
+
+def player_routine(dealer, player, deck, rec_actions):
+    standing = False
+    while not standing:
+        try:
+            rec_action = rec_actions[dealer[0]][point_value(player)]
+            if rec_action == HIT:
+                player.append(draw(deck))
+            else:
+                standing = True
+        except IndexError:
+            standing = True
+    return True
 
 
 def draw(deck):
@@ -90,41 +105,55 @@ def point_value(hand):
         return hard
 
 
-def round_result(players):
-    dealer = point_value(players[0])
-    player = point_value(players[1])
-    if player > 21:
-        return LOSE_TIE
-    if dealer > 21:
+def round_result(dealer, player):
+    dealer_value = point_value(dealer)
+    player_value = point_value(player)
+    if player_value > 21:
+        return LOSE
+    if dealer_value > 21:
         return WIN
-    if dealer >= player:
-        return LOSE_TIE
+    if dealer_value > player_value:
+        return LOSE
+    if dealer_value == player_value:
+        return TIE
     else:
         return WIN
 
 
 if __name__ == '__main__':
     dealer, player_1 = [], []
-    wins = 0
-    action_chart = np.zeros((2,5,10), dtype=np.uint32)
+    hard_win_prob = np.zeros((2, 10, 10), dtype=np.int32)
     # [WIN/LOSE][Hard Total][Dealer upcard]
-    print(action_chart)
-    action_chart[0][1][2] = 4
-    print(action_chart)
-    for a in range(100000):
-        players = [dealer, player_1]
-        deck = fill_shoe(1)
-        new_round(players, deck, True)
-        rig_hand(deck, player_1, 20)
-        rig_upcard(deck, dealer, 5)
-        player_1.append(draw(deck))
-        dealer_routine(dealer, deck)
-        if round_result([dealer, player_1]) == WIN:
-            wins += 1
-            #print(point_value(dealer), point_value(player_1))
-    a += 1
-    print(wins)
-    print("Win Percent chance = " + str(wins / a))
-
-
+    # if os.path.isfile('./flat_hard_win_prob.npy'):
+    #     flat_hard_win_prob = np.load('flat_hard_win_prob.npy')
+    #     hard_win_prob = flat_hard_win_prob.reshape((hard_win_prob.shape[0], hard_win_prob.shape[1],
+    #                                                 hard_win_prob.shape[2]))
+    # np.save('flat_hard_win_prob', hard_win_prob)
+    players = [dealer, player_1]
+    rec_action_table = np.zeros((10,10), dtype=np.int32)
+    win_differential = np.zeros((10,10), dtype=np.int32)
+    for a in range(rec_action_table.shape[1]):
+        rec_action_table[9][a] = 1
+    for player_value in range(9, -1, -1):
+        for dealer_upcard in range(10):
+            for action in [HIT, STAND]:
+                for a in range(10000):
+                    deck = fill_shoe(1)
+                    new_round(players, deck, True)
+                    rig_hand(deck, player_1, player_value+8)
+                    rig_upcard(deck, dealer, dealer_upcard+1)
+                    if action == HIT:
+                        player_1.append(draw(deck))
+                        player_routine(dealer, player_1, deck, rec_action_table)
+                    dealer_routine(dealer, deck)
+                    hard_win_prob[action][player_value][dealer_upcard] += round_result(dealer, player_1)
+            if hard_win_prob[HIT][player_value][dealer_upcard] > hard_win_prob[STAND][player_value][dealer_upcard]:
+                rec_action_table[player_value][dealer_upcard] = HIT
+                win_differential[player_value][dealer_upcard] = hard_win_prob[HIT][player_value][dealer_upcard]
+            else:
+                rec_action_table[player_value][dealer_upcard] = STAND
+                win_differential[player_value][dealer_upcard] = hard_win_prob[STAND][player_value][dealer_upcard]
+    print(hard_win_prob)
+    print(rec_action_table)
+    print(win_differential)
 
